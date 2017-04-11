@@ -17,7 +17,7 @@
 #include "opencv2/core/types_c.h"
 #include "opencv2/opencv.hpp"
 #pragma comment(lib, "LprSDK.lib")
-//#define debug
+#define debug
 
 #define MAX_ELATASK_NUM     24   //任务最大支持数量
 
@@ -265,25 +265,27 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 	VRECT MRect = { 0 };// 颜色定位区
 	OSAL_INT32   iVehicleType = 5;
 
-	////////////////////////////有车牌输入////////////////////////////////////
+	////////////////////////////一 有车牌输入////////////////////////////////////
 	if (pRect->color)
 	{
+		/**********1.检测车脸***********/
 		if (Handle->adaboost_model)//车脸检测
 		{
-			vehicles = HaarDetectObjects(Handle->adaboost_model,(OSAL_PUCHAR)ResizeImage->imageData,ResizeImage->width,ResizeImage->height,
+			vehicles = HaarDetectObjects( Handle->adaboost_model,(OSAL_PUCHAR)ResizeImage->imageData,ResizeImage->width,ResizeImage->height,
 				       1.1, 3, HAAR_DO_ROUGH_SEARCH, 0, 0, 0, 0,&pHaarResult);
 		}
 
+		/**********2 蓝牌***********/
 		if (pRect->color == 1)//1 蓝牌
 		{
 			v_color = 1;
-			//////////////////1.1 颜色定位区////////////////////////////////
+		/**********2.1 颜色定位***********/
 			MRect.bottom = pRect->y     - 2 * (pRect->height);
 			MRect.top    = MRect.bottom - 3 * (pRect->height);
 			MRect.left   = pRect->x - pRect->width;
 			MRect.right  = pRect->x + pRect->width;
 
-			//////////////////构造车脸//////////////////////////////////
+		/**********2.2 车脸定位***********/
 
 			//if (vehicles)
 			//{
@@ -302,30 +304,32 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 			ppResult1.width = (pRect->width)*5.3;
 			ppResult1.height = (pRect->height)*10.7;
 
-			////////////////车型判断////////////////////////////////////
+		/**********2.3 车型判断***********/
 			cv::Rect rect_type(ppResult1.x, ppResult1.y, ppResult1.width, ppResult1.height);
 			mat(rect_type).copyTo(roiImage_type);
 			cvtColor(roiImage_type, roiImage_type, CV_BGR2GRAY);
 
 			VehicleType_TaskProcess(Handle, roiImage_type.data, roiImage_type.cols, roiImage_type.rows, IMAGE_TYPE_BGR, 30, &iVehicleType);
 		}
+
+		/**********2 黄牌***********/
 		if (pRect->color == 2)  //2黄牌
 		{
 			v_color = 2;
 
-			//////////////////2.1颜色定位区////////////////////////////////
-			MRect.bottom = pRect->y - 2 * (pRect->height);
+		/**********3.1 颜色定位***********/
+			MRect.bottom = pRect->y - 3 * (pRect->height);//比蓝牌高一点；
 			MRect.top    = MRect.bottom - 3 * (pRect->height);
 			MRect.left   = pRect->x - pRect->width;
 			MRect.right  = pRect->x + pRect->width;
 
-			//////////////////构造车脸//////////////////////////////////
+		/**********3.2 构造车脸***********/
 			ppResult2.x = (pRect->x) - (pRect->width)*3.5;
 			ppResult2.y = (pRect->y) - (pRect->height)*9.8;
 			ppResult2.width = (pRect->width)*6.8;
 			ppResult2.height = (pRect->height) * 13;
 
-			////////////////车型判断////////////////////////////////////
+		/**********3.3 车型判断***********/
 			cv::Rect rect_type(ppResult1.x, ppResult1.y, ppResult1.width, ppResult1.height);
 			mat(rect_type).copyTo(roiImage_type);
 			cvtColor(roiImage_type, roiImage_type, CV_BGR2GRAY);
@@ -333,14 +337,22 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 			VehicleType_TaskProcess(Handle, roiImage_type.data, roiImage_type.cols, roiImage_type.rows, IMAGE_TYPE_BGR, 30, &iVehicleType);
 		}
 
-		//////////////////////颜色识别//////////////////////////////////
+		/**********4 颜色识别***********/
 		cv::Rect rect_color(MRect.left, MRect.top, MRect.right - MRect.left, MRect.bottom - MRect.top);
 		mat(rect_color).copyTo(roiImage_color);//划出颜色识别区；
 		float      rate1 = 0;
 		Result->iVehicleColor = CalculateBGRForDetect(roiImage_color.data, roiImage_color.cols, roiImage_color.rows, rate1, v_color);
+		
+
+#ifdef debug
 		rectangle(mat, rect_color, cv::Scalar(0, 0, 255), 5);
 		imwrite("1.jpg", mat);
 		imwrite("2.jpg", roiImage_color);
+
+		cv::namedWindow("Color_ROI", 0);
+		imshow("Color_ROI", mat);
+#endif
+
 
 	}
     
@@ -458,8 +470,11 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 			float      rate1 = 0;
 			Result->iVehicleColor = CalculateBGRForDetect(roiImage_color.data, roiImage_color.cols, roiImage_color.rows, rate1, v_color);
 
-			rectangle(mat, rect_color1,cv::Scalar(0,0,255),5);
+#ifdef debug
+			rectangle(mat, rect_color1, cv::Scalar(0, 0, 255), 5);
 			imwrite("1.jpg", mat);
+#endif
+			
 		}
 		/**********5无车牌***********/
 		else
@@ -484,24 +499,7 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 	//////////////////////////////////////////////////////////////////////////
 
 	
-#ifdef debug
 
-	   cv::Scalar fd(0, 0, 255);
-	   cv::Rect rect_haar(pHaarResult->x, pHaarResult->y, pHaarResult->width, pHaarResult->height);
-	   cv::Rect rect_jw(pResult1->iXStart, pResult1->iYStart, pResult1->iXEnd - pResult1->iXStart, pResult1->iYEnd - pResult1->iYStart);
-
-	   rectangle(mat, rect_color, fd, 2);
-	   rectangle(mat, rect_haar,  fd, 2);
-	   rectangle(mat, rect_jw,    fd, 2);
-
-	   sprintf(path1, "%s%d.jpg", "E:\\1-work\\1-work-space\\3月\\testdata\\车脸定位\\", i);
-	   sprintf(path2, "%s%d.jpg", "E:\\1-work\\1-work-space\\3月\\testdata\\颜色定位\\", i);
-
-	   cv::imwrite(path1, mat);
-	   cv::imwrite(path2, roiImage_color);
-
-	   i++;
-#endif
 
 
 
