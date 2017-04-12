@@ -22,6 +22,7 @@
 #define MAX_ELATASK_NUM     24   //任务最大支持数量
 
 using namespace std;
+using namespace cv;
 
 
 OSAL_INT32 g_iHandleCount = 0;
@@ -30,9 +31,13 @@ OSAL_HANDLE  g_Handle[MAX_ELATASK_NUM] = {OSAL_NULL};
 //OSAL_INT32 g_itypeHandleCount = 0;
 //OSAL_HANDLE  g_typeHandle[MAX_ELATASK_NUM] = {OSAL_NULL};
 
+string xml_path = "cascade_Haar_17_3.xml";
+CascadeClassifier cascade;
 SDKErrCode Vehicle_Init(OSAL_HANDLE *pHandle, int width, int height, pPlateRect pRect)
 
 {
+
+	cascade.load(xml_path);
 	pTaskMain pTask = OSAL_NULL;
 
 	OSAL_INT32 i = 0;
@@ -234,6 +239,8 @@ int MatResize(uchar*src, int col_s, int row_s, uchar*dst,int col_d,int row_d, fl
 int i = 0;
 char path1[256] = { 0 };
 char path2[256] = { 0 };
+
+
 SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataType IMAGE_TYPE_BGR, pPlateRect pRect, PTCResult Result)
 {
 	IplImage *GrayImage = OSAL_NULL,*ResizeImage=OSAL_NULL,*m_srcImage=OSAL_NULL;
@@ -259,52 +266,80 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 
 	THaarRect ppResult1;//蓝牌
 	THaarRect ppResult2; //黄牌
-	THaarRect ppResult;
+
 
 	int v_color = 0  ;//1 蓝牌，2黄牌
 	VRECT MRect = { 0 };// 颜色定位区
 	OSAL_INT32   iVehicleType = 5;
 
+	//////////////////////////////////////////////////////////////////////////
+	/********** 检测车脸***********/
+	Mat resizemat;
+	vector<Rect> objs;
+	cv::Rect rect_face;
+	resize(mat, resizemat, Size(mat.cols / 8, mat.rows / 8));
+	cascade.detectMultiScale(resizemat, objs, 1.1, 1, 0	| CV_HAAR_DO_ROUGH_SEARCH , cv::Size(20, 6));
 	////////////////////////////一 有车牌输入////////////////////////////////////
 	if (pRect->color)
 	{
-		/**********1.检测车脸***********/
-		if (Handle->adaboost_model)//车脸检测
+		/**********车牌在车脸内***********/
+		int vehiclenum = objs.size();
+		if (vehiclenum)
 		{
-			vehicles = HaarDetectObjects( Handle->adaboost_model,(OSAL_PUCHAR)ResizeImage->imageData,ResizeImage->width,ResizeImage->height,
-				       1.1, 3, HAAR_DO_ROUGH_SEARCH, 0, 0, 0, 0,&pHaarResult);
+			vector<cv::Rect>::iterator it = objs.begin();
+			rect_face = Rect(it->x, it->y, it->width, it->height);
+			for (int j = 0; j < objs.size(); j++)
+			{
+				if ((it->x * 8 < pRect->x) && ((it->x + it->width) * 8 > (pRect->x + pRect->width)) &&
+					((it->y + it->height / 2) * 8 < pRect->y) && (it->y + it->height) * 8 > (pRect->y + pRect->height))//车牌必须位于车脸的下半区内
+				{
+					int distance1 = (rect_face.y + rect_face.height) * 8 - (pRect->y + pRect->height) +
+						abs((rect_face.x + rect_face.width / 2) * 8 - (pRect->x + pRect->width / 2));
+					int distance2 = (it->y + it->height) * 8 - (pRect->y + pRect->height) +
+						abs((it->x + it->width / 2) * 8 - (pRect->x + pRect->width / 2));
+					if (distance2 < distance1)
+					{
+						rect_face = Rect(it->x, it->y, it->width, it->height);//求出与车牌最接近的车脸；
+					}
+				}
+				it++;
+			}
 		}
-
-		/**********2 蓝牌***********/
+		/**********1 蓝牌***********/
 		if (pRect->color == 1)//1 蓝牌
 		{
 			v_color = 1;
-		/**********2.1 颜色定位***********/
+		/**********1.1 颜色定位***********/
 			MRect.bottom = pRect->y     - 2 * (pRect->height);
 			MRect.top    = MRect.bottom - 3 * (pRect->height);
 			MRect.left   = pRect->x - pRect->width;
 			MRect.right  = pRect->x + pRect->width;
 
-		/**********2.2 车脸定位***********/
-
-			//if (vehicles)
-			//{
-			//}
-
-			ppResult1.x = (pRect->x) - (pRect->width)*2.8;//防溢出；
-			if (ppResult1.x < 0)//防溢出；
+		/**********1.2 车脸定位***********/
+	
+			if (vehiclenum)//车牌位于车脸的下半区内
 			{
-				ppResult1.x = 0;
+				ppResult1.x = rect_face.x * 8;
+				ppResult1.y = rect_face.y * 8;
+				ppResult1.width  = rect_face.width  * 8;
+				ppResult1.height = rect_face.height * 8;
 			}
-			ppResult1.y = (pRect->y) - (pRect->height) * 6;
-			if (ppResult1.y < 0)
+			else//车牌车脸不重合
 			{
-				ppResult1.y = 0;
+				ppResult1.x = (pRect->x) - (pRect->width)*2.8;//防溢出；
+				if (ppResult1.x < 0)//防溢出；
+				{
+					ppResult1.x = 0;
+				}
+				ppResult1.y = (pRect->y) - (pRect->height) * 6;
+				if (ppResult1.y < 0)
+				{
+					ppResult1.y = 0;
+				}
+				ppResult1.width = (pRect->width)*5.3;
+				ppResult1.height = (pRect->height)*10.7;
 			}
-			ppResult1.width = (pRect->width)*5.3;
-			ppResult1.height = (pRect->height)*10.7;
-
-		/**********2.3 车型判断***********/
+		/**********1.3 车型判断***********/
 			cv::Rect rect_type(ppResult1.x, ppResult1.y, ppResult1.width, ppResult1.height);
 			mat(rect_type).copyTo(roiImage_type);
 			cvtColor(roiImage_type, roiImage_type, CV_BGR2GRAY);
@@ -316,28 +351,38 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 		if (pRect->color == 2)  //2黄牌
 		{
 			v_color = 2;
-
-		/**********3.1 颜色定位***********/
+		/**********2.1 颜色定位***********/
 			MRect.bottom = pRect->y - 3 * (pRect->height);//比蓝牌高一点；
 			MRect.top    = MRect.bottom - 3 * (pRect->height);
 			MRect.left   = pRect->x - pRect->width;
 			MRect.right  = pRect->x + pRect->width;
 
-		/**********3.2 构造车脸***********/
-			ppResult2.x = (pRect->x) - (pRect->width)*3.5;
-			ppResult2.y = (pRect->y) - (pRect->height)*9.8;
-			ppResult2.width = (pRect->width)*6.8;
-			ppResult2.height = (pRect->height) * 13;
+		/**********2.2 车脸定位***********/
+			if (vehiclenum)//车牌位于车脸的下半区内
+			{
+				ppResult2.x = rect_face.x * 8;
+				ppResult2.y = rect_face.y * 8;
+				ppResult2.width  = rect_face.width  * 8;
+				ppResult2.height = rect_face.height * 8;
+			}
+			else
+			{
+				ppResult2.x = (pRect->x) - (pRect->width)*3.5;
+				ppResult2.y = (pRect->y) - (pRect->height)*9.8;
+				ppResult2.width  = (pRect->width)*6.8;
+				ppResult2.height = (pRect->height) * 13;
+			}
 
-		/**********3.3 车型判断***********/
-			cv::Rect rect_type(ppResult1.x, ppResult1.y, ppResult1.width, ppResult1.height);
+
+		/**********2.3 车型判断***********/
+			cv::Rect rect_type(ppResult2.x, ppResult2.y, ppResult2.width, ppResult2.height);
 			mat(rect_type).copyTo(roiImage_type);
 			cvtColor(roiImage_type, roiImage_type, CV_BGR2GRAY);
 			OSAL_INT32   iVehicleType = 5;
-			VehicleType_TaskProcess(Handle, roiImage_type.data, roiImage_type.cols, roiImage_type.rows, IMAGE_TYPE_BGR, 30, &iVehicleType);
+			VehicleType_TaskProcess(Handle, roiImage_type.data, roiImage_type.cols, roiImage_type.rows, IMAGE_TYPE_BGR, 10, &iVehicleType);
 		}
 
-		/**********4 颜色识别***********/
+		/**********2 颜色识别***********/
 		cv::Rect rect_color(MRect.left, MRect.top, MRect.right - MRect.left, MRect.bottom - MRect.top);
 		mat(rect_color).copyTo(roiImage_color);//划出颜色识别区；
 		float      rate1 = 0;

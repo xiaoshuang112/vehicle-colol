@@ -10,7 +10,7 @@
 #ifndef   COL_TYPE_EXPORT_H
 #define   COL_TYPE_EXPORT_H
 
-#define VEHICLE_COL_MODEL_EXPORTS
+//#define VEHICLE_COL_MODEL_EXPORTS
 #ifdef VEHICLE_COL_MODEL_EXPORTS
 #define VEHICLE_COL_MODEL_API __declspec(dllexport)
 #else
