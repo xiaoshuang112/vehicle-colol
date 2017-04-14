@@ -274,7 +274,6 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 	int v_color = 0  ;//颜色标识符，1 蓝牌，2黄牌
 	VRECT MRect = { 0 };// 颜色定位区
 	OSAL_INT32   iVehicleType = 5;//车型编号
-
 	/************************************************************************/
 	/*                      检测车脸                               */
 	/************************************************************************/
@@ -339,7 +338,7 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 				ppResult1.width  = rect_face.width  ;
 				ppResult1.height = rect_face.height ;
 			}
-			else//车牌车脸不重合
+			else//无车脸
 			{
 				ppResult1.x = (pRect->x) - (pRect->width)*2.8;//防溢出；
 				if (ppResult1.x < 0)//防溢出；
@@ -448,7 +447,7 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 	rectangle(mat, cv::Rect(pRect->x,pRect->y,pRect->width,pRect->height), cv::Scalar(255, 0, 255), 5);
 	rectangle(mat, cv::Rect(rect_face.x , rect_face.y , rect_face.width, rect_face.height ), cv::Scalar(0, 0, 255), 5);
 	imwrite("1.jpg", mat);
-//	imwrite("2.jpg", roiImage_color);
+ 	imwrite("2.jpg", roiImage_color);
 
 	cv::namedWindow("Color_ROI", 0);
 	imshow("Color_ROI", mat);
