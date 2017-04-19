@@ -10,13 +10,13 @@
 #include "./HaarAdaboost/HaarExport.h"
 #include "./HaarAdaboost/BaseFunction.h"
 
-#include "./inc/JWExport.h"
+//#include "./inc/JWExport.h"
 #include "./inc/SDKCommon.h"
 #include "./TypeDetect/VehicleTypeDetect.h"
 
 #include "opencv2/core/types_c.h"
 #include "opencv2/opencv.hpp"
-#pragma comment(lib, "LprSDK.lib")
+//#pragma comment(lib, "LprSDK.lib")
 #define debug
 
 #define MAX_ELATASK_NUM     24   //任务最大支持数量
@@ -32,7 +32,7 @@ OSAL_HANDLE  g_Handle[MAX_ELATASK_NUM] = {OSAL_NULL};
 //OSAL_HANDLE  g_typeHandle[MAX_ELATASK_NUM] = {OSAL_NULL};
 
 string xml_path = "cascade_Haar_17_3.xml";
-CascadeClassifier cascade;
+cv::CascadeClassifier cascade;
 SDKErrCode Vehicle_Init(OSAL_HANDLE *pHandle, int width, int height, pPlateRect pRect)
 
 {
@@ -80,7 +80,7 @@ SDKErrCode Vehicle_Init(OSAL_HANDLE *pHandle, int width, int height, pPlateRect 
 
 	if(bSuccess==OSAL_TRUE)
 	{
-		JW_LprTaskCreate(&pTask->plate_model,width,height);
+//		JW_LprTaskCreate(&pTask->plate_model,width,height);
 		pTask->adaboost_model=HaarAdaboostCreate(VEHICLE_BEFFACE_MODEL);
 		//颜色
 		//VehicleColor_TaskCreate(pTask,2);
@@ -151,11 +151,14 @@ int  CalculateBGRForDetect(uchar*Img, int cols, int rows, float &rate,int v_colo
 			}		
 		}
 	}
-
-	for (int i = 0; i < cols*rows; i++)
+	else
 	{
-		color_hist[ret[i]]++;
+		for (int i = 0; i < cols*rows; i++)
+		{
+			color_hist[ret[i]]++;
+		}
 	}
+	
 
 	color_hist[2] += color_hist[6];//红粉合并
 
@@ -192,7 +195,12 @@ int  CalculateBGRForDetect(uchar*Img, int cols, int rows, float &rate,int v_colo
 	rate = 0;
 	if (color > -1)
 	{
-		rate = 1.0*color_hist[color] / (cols*rows);
+		int sum = 0;
+		for (int i = 0; i < 10; sum += color_hist[i++])
+		{
+		}
+
+		rate = 1.0*color_hist[color] / sum;
 		if (rate < 0.1)
 		{
 			color = max1;
@@ -202,10 +210,10 @@ int  CalculateBGRForDetect(uchar*Img, int cols, int rows, float &rate,int v_colo
 	delete[]ret;
 	delete[]color_hist;
 
-	if (color == 8)
-	{
-		color = 1;
-	}
+	//if (color == 8)
+	//{
+	//	color = 1;
+	//}
 
 	return color;
 	
@@ -239,6 +247,7 @@ int MatResize(uchar*src, int col_s, int row_s, uchar*dst,int col_d,int row_d, fl
 int i = 0;
 char path1[256] = { 0 };
 char path2[256] = { 0 };
+
 
 
 SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataType IMAGE_TYPE_BGR, pPlateRect pRect, PTCResult Result)
@@ -281,13 +290,15 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 	resize(mat, resizemat, Size(mat.cols / 8, mat.rows / 8));
 	cvtColor(resizemat, resizemat, CV_BGR2GRAY);
 
-	//imwrite("b.jpg", resizemat);
+
 	cascade.detectMultiScale(resizemat, objs, 1.1, 1, 0
 		                      //|CV_HAAR_FIND_BIGGEST_OBJECT   //3
 		                      | CV_HAAR_DO_ROUGH_SEARCH     //2
 		                      //CV_HAAR_SCALE_IMAGE       //1
 		                      , cv::Size(20, 6));
 	int vehiclenum = objs.size();
+
+
 	/************************************************************************/
 	/*                      一 有车牌输入                               */
 	/************************************************************************/
@@ -325,10 +336,29 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 			v_color = 1;
 		/**********1.1 颜色定位***********/
 			MRect.bottom = pRect->y     - 2 * (pRect->height);
-			MRect.top    = MRect.bottom - 3 * (pRect->height);
+			if ((MRect.bottom) < 0)
+			{
+				MRect.bottom = 0;
+				pRect->color = 0;
+			}
+			MRect.top    = (MRect.bottom) - 3 * (pRect->height);
+			if ((MRect.top) < 0)
+			{
+				MRect.top = 0;
+				pRect->color = 0;
+			}
 			MRect.left   = pRect->x - pRect->width;
+			if ((MRect.left) < 0)
+			{
+				MRect.left = 0;
+				pRect->color = 0;
+			}
 			MRect.right  = pRect->x + pRect->width;
-
+			if ((MRect.right) < 0)
+			{
+				MRect.right = 0;
+				pRect->color = 0;
+			}
 		/**********1.2 车脸定位***********/
 	
 			if (vehiclenum)//车牌位于车脸的下半区内
@@ -352,6 +382,16 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 				}
 				ppResult1.width = (pRect->width)*5.3;
 				ppResult1.height = (pRect->height)*10.7;
+
+				if (ppResult1.x + ppResult1.width >= mat.cols)
+				{
+					ppResult1.width = mat.cols - ppResult1.x;
+				}
+
+				if (ppResult1.y + ppResult1.height >= mat.rows)
+				{
+					ppResult1.height = mat.rows - ppResult1.y;
+				}
 			}
 		/**********1.3 车型判断***********/
 			rect_type = cv::Rect(ppResult1.x, ppResult1.y, ppResult1.width, ppResult1.height);
@@ -367,10 +407,29 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 			v_color = 2;
 		/**********2.1 颜色定位***********/
 			MRect.bottom = pRect->y - 3 * (pRect->height);//比蓝牌高一点；
+			if ((MRect.bottom) < 0)
+			{
+				MRect.bottom = 0;
+				pRect->color = 0;
+			}
 			MRect.top    = MRect.bottom - 3 * (pRect->height);
+			if ((MRect.top) < 0)
+			{
+				MRect.top = 0;
+				pRect->color = 0;
+			}
 			MRect.left   = pRect->x - pRect->width;
+			if ((MRect.left) < 0)
+			{
+				MRect.left = 0;
+				pRect->color = 0;
+			}
 			MRect.right  = pRect->x + pRect->width;
-
+			if ((MRect.right) < 0)
+			{
+				MRect.right = 0;
+				pRect->color = 0;
+			}
 		/**********2.2 车脸定位***********/
 			if (vehiclenum)//车牌位于车脸的下半区内
 			{
@@ -382,7 +441,15 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 			else
 			{
 				ppResult2.x = (pRect->x) - (pRect->width)*3.5;
+				if (ppResult2.x < 0)
+				{
+					ppResult2.x = 0;
+				}
 				ppResult2.y = (pRect->y) - (pRect->height)*9.8;
+				if (ppResult2.y < 0)
+				{
+					ppResult2.y = 0;
+				}
 				ppResult2.width  = (pRect->width)*6.8;
 				ppResult2.height = (pRect->height) * 13;
 			}
@@ -449,15 +516,20 @@ SDKErrCode Vehicle_Process(OSAL_HANDLE handle, pColTypeImage image, ImageDataTyp
 	imwrite("1.jpg", mat);
  	imwrite("2.jpg", roiImage_color);
 
+
 	cv::namedWindow("Color_ROI", 0);
 	imshow("Color_ROI", mat);
+
+	waitKey(10);
 #endif
 
-	//////////////////////////////////////////////////////////////////////////
 
-	*pRect = { 0, 0, 0, 0, 0 };//复位
+	//////////////////////////////////////////////////////////////////////////
+	pRect->color = 0;
 	Result->iVehicleType = iVehicleType;
-	cvReleaseImage(&m_srcImage);
+ 	cvReleaseImage(&m_srcImage);
+
+
 	 return SDK_ERR_NONE;
 
 }
@@ -479,7 +551,7 @@ SDKErrCode Vehicle_Realse(OSAL_HANDLE *pHandle)
 	}
 	if(handle->plate_model!=OSAL_NULL)
 	{
-		JW_LprTaskFree(&handle->plate_model);
+//		JW_LprTaskFree(&handle->plate_model);
 	}
 
 	//颜色释放
